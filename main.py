@@ -1,36 +1,29 @@
-import os
 from fastapi import FastAPI
 from pydantic import BaseModel
-# NAYA IMPORT: Hamne apni agent.py file se 'app_agent' ko bula liya
-from agent import app_agent
+from agent import app_agent # Hamne agent.py se apna banaya hua app_agent yahan import kar liya
 
-# create FastAPI app
 app = FastAPI()
 
-# defien what the user will send us
+# 1. Pydantic Model: Yeh ensure karta hai ki user jo data bhej raha hai, usme 'message' naam ki string zaroor ho
 class chatRequest(BaseModel):
     message: str
-    
-# this is the health check to verify that whether the server is running or not (GET request)
-@app.get("/health")
-def health_check():
-    return {"status": "ok", "message": "InsightAgent is running!"}
 
-# this is the endpoint to handle the chat request (POST request)
 @app.post("/chat")
 def chat(request: chatRequest):
+    # 2. Format Input: User ke message ko LangGraph ke samajh aane wale format mein set kiya
+    initial_state = {"messages": [("user", request.message)]}
     
-    # 1. User ke message ko Agent ki memory format (dictionary list) mein pack kiya
-    initial_state = {"messages": [request.message]}
-    
-    # 2. Agent ko kaam par lagaya (.invoke matlab "start working")
+    # 3. Agent Execution: Agent ko start kiya (invoke)
     result = app_agent.invoke(initial_state)
     
-    # 3. Agent jab poora loop ghoom kar aayega, toh uski memory mein se aakhiri reply nikal liya
-    final_reply = result["messages"][-1]
+    # 4. Extract Reply: Agent ki poori thinking process se sirf aakhiri final answer nikala
+    raw_reply = result["messages"][-1].content
     
-    # 4. Debugging ke liye CMD mein print kar diya
-    print(f"\n--- AGENT RESPONSE ---\n{final_reply}\n----------------------\n")
-    
-    # 5. Browser/Swagger UI ko jawab bhej diya
+    # 5. Output Cleaning: LangChain kabhi-kabhi extra metadata bhejta hai, use saaf karke pure text banaya
+    if isinstance(raw_reply, list):
+        final_reply = raw_reply[0].get("text", str(raw_reply))
+    else:
+        final_reply = str(raw_reply)
+        
+    # 6. Return Response: Frontend/Swagger UI ko final saaf answer bhej diya
     return {"reply": final_reply}
