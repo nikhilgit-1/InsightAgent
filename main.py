@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from agent import app_agent # Hamne agent.py se apna banaya hua app_agent yahan import kar liya
+from agent import app_agent, system_message # Hamne agent.py se apna banaya hua app_agent yahan import kar liya
 
 app = FastAPI()
 
@@ -11,7 +11,12 @@ class chatRequest(BaseModel):
 @app.post("/chat")
 def chat(request: chatRequest):
     # 2. Format Input: User ke message ko LangGraph ke samajh aane wale format mein set kiya
-    initial_state = {"messages": [("user", request.message)]}
+    initial_state = {
+        "messages": [
+            ("system", system_message),
+            ("user", request.message)
+        ]
+    }
     
     # 3. Agent Execution: Agent ko start kiya (invoke)
     result = app_agent.invoke(initial_state)

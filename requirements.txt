@@ -4,3 +4,6 @@ google-genai
 python-dotenv
 langgraph
 langchain-google-genai
+pymongo
+certifi
+dnspython
