@@ -1,34 +1,59 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from agent import app_agent, system_message # Hamne agent.py se apna banaya hua app_agent yahan import kar liya
+from typing import Optional
+import time
+from agent import get_dynamic_agent
+from langchain_core.messages import HumanMessage, SystemMessage # 👈 Yahan SystemMessage add kiya
 
 app = FastAPI()
 
-# 1. Pydantic Model: Yeh ensure karta hai ki user jo data bhej raha hai, usme 'message' naam ki string zaroor ho
-class chatRequest(BaseModel):
-    message: str
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.post("/chat")
-def chat(request: chatRequest):
-    # 2. Format Input: User ke message ko LangGraph ke samajh aane wale format mein set kiya
-    initial_state = {
-        "messages": [
-            ("system", system_message),
-            ("user", request.message)
-        ]
-    }
-    
-    # 3. Agent Execution: Agent ko start kiya (invoke)
-    result = app_agent.invoke(initial_state)
-    
-    # 4. Extract Reply: Agent ki poori thinking process se sirf aakhiri final answer nikala
-    raw_reply = result["messages"][-1].content
-    
-    # 5. Output Cleaning: LangChain kabhi-kabhi extra metadata bhejta hai, use saaf karke pure text banaya
-    if isinstance(raw_reply, list):
-        final_reply = raw_reply[0].get("text", str(raw_reply))
-    else:
-        final_reply = str(raw_reply)
-        
-    # 6. Return Response: Frontend/Swagger UI ko final saaf answer bhej diya
-    return {"reply": final_reply}
+class ChatRequest(BaseModel):
+    user_query: str
+    sql_db_url: Optional[str] = None
+    nosql_uri: Optional[str] = None
+    nosql_db_name: Optional[str] = None
+
+@app.post("/api/chat")
+def chat_with_db(request: ChatRequest):
+    agent = get_dynamic_agent(
+        sql_db_url=request.sql_db_url,
+        nosql_uri=request.nosql_uri,
+        nosql_db_name=request.nosql_db_name
+    )
+
+    # 👈 AI ka strict instruction ab hum yahan set kar rahe hain
+    sys_msg = SystemMessage(content="""You are a smart Data Analyst AI.
+    For SQL databases, write MySQL/SQLite compatible SELECT queries.
+    For NoSQL databases, ALWAYS use list_nosql_collections first if you don't know the exact collection name.
+    Always include the exact query you executed at the end of your response.""")
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            print(f"Agent Execution Attempt {attempt + 1}...")
+            
+            # 👈 Yahan SystemMessage aur User ka sawal dono ek sath ja rahe hain
+            response = agent.invoke({
+                "messages": [sys_msg, HumanMessage(content=request.user_query)]
+            })
+            
+            return {"status": "success", "reply": response["messages"][-1].content}
+            
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed: {str(e)}")
+            if attempt < max_retries - 1:
+                time.sleep(2) 
+            else:
+                return {
+                    "status": "error", 
+                    "reply": "Server is busy right now or API limits reached. Please try again in a moment."
+                }

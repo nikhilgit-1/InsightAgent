@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env  # API keys aur secure credentials yahan se aayenge
+    volumes:
+      - .:/app  # Live reload ke liye code sync
+    # .dockerignore ki wajah se venv sync nahi hoga, jo ki achhi baat hai
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # Container ke node_modules ko override hone se bachane ke liye
+    depends_on:
+      - backend
